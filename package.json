@@ -1,7 +1,7 @@
 {
-  "name": "die-render",
-  "version": "2.0.1",
-  "description": "DIE - 흑백 복도 미로 멀티플레이 공포 게임",
+  "name": "dorm-ramen",
+  "version": "1.0.0",
+  "description": "사감쌤 몰래 라면 먹기 - 멀티플레이 3D 공포 탈출 게임",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
