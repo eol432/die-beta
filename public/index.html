@@ -202,7 +202,7 @@ const hexs=n=>'#'+n.toString(16).padStart(6,'0'),hs=s=>String(s).replace(/[&<>"]
 const cellOf=(x,z)=>[clamp(Math.floor(x/C),0,G-1),clamp(Math.floor(z/C),0,G-1)],same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
 const spawnPos=i=>[TX-R+1.6+(i%2)*1.4,TZ+DZ+(Math.floor(i/2)-1)*1.4];
 let px=TX-R+1.6,pz=TZ+DZ,yaw=Math.PI/2,pitch=0,state='menu',phase='lobby',keys={},tgt=null,flashOn=true,tAlive=0,hidden=null,stam=100,scare=0,scareT=0,flick=1,cy=H+1.7,escSent=false,specI=0,specOn=false,redB=0,plT=0,stT=0;
-let entering=null,mMode=0,opened=0,doorOpen=false,mOn=false,mx=M-C/2,mz=M-C/2,mvx=mx,mvz=mz,fkeys=[],nk=1,gameT=0,roamT=0,roamCell=null,snapT=0;
+let mWay=null,entering=null,mMode=0,opened=0,doorOpen=false,mOn=false,mx=M-C/2,mz=M-C/2,mvx=mx,mvz=mz,fkeys=[],nk=1,gameT=0,roamT=0,roamCell=null,snapT=0;
 let me=null,players=[],peer=null,conn=null,isHost=false,room=0,myId='',nick='',sess=0,last=performance.now(),prox=0;
 const conns={},av={},kmesh={};
 const mkP=(id,n,i)=>({id,nick:n,idx:i,lives:3,held:0,st:'play',x:0,z:0,yaw:0,pitch:0,h:-1,f:1,rolled:false,ign:0,imm:0,vx:0,vz:0,vyaw:0,vpitch:0});
@@ -258,7 +258,7 @@ function beginGame(seed,info){
   players.forEach(p=>{const s=spawnPos(p.idx);p.x=p.vx=s[0];p.z=p.vz=s[1];p.yaw=p.vyaw=Math.PI/2;p.pitch=p.vpitch=0;p.f=1});
   phase='play';state='play';
   px=me.x;pz=me.z;yaw=Math.PI/2;pitch=0;
-  tAlive=0;gameT=0;scare=0;flick=1;cy=H+1.7;mOn=false;mon.visible=false;mx=mvx=M-C/2;mz=mvz=M-C/2;hidden=null;entering=null;stam=100;roamT=0;roamCell=null;escSent=false;specI=0;specOn=false;redB=0;
+  tAlive=0;gameT=0;scare=0;flick=1;cy=H+1.7;mOn=false;mon.visible=false;mx=mvx=M-C/2;mz=mvz=M-C/2;mWay=null;hidden=null;entering=null;stam=100;roamT=0;roamCell=null;escSent=false;specI=0;specOn=false;redB=0;
   fkeys=[];nk=1;setOpened(0);syncKeys();buildAvatars();
   $('slit').style.display='none';show(null);try{document.activeElement.blur()}catch(e){}hud();plist();
   try{ren.domElement.requestPointerLock()}catch(e){}}
@@ -408,7 +408,7 @@ function checkOver(){
   bcast({t:'over',r});showOver(r)}
 function hostAct(p,m){
   if(phase!=='play'||!p||p.st!=='play')return;
-  if(m.t==='drawer'){const d=drawers[m.i];if(!d||d.done)return;if(d.key){d.done=2;toastTo(p,'서랍 안에 은색 열쇠가 있다')}else{d.done=1;toastTo(p,'서랍이 텅 비어 있다…')}}
+  if(m.t==='drawer'){const d=drawers[m.i];if(!d||d.done)return;if(d.key){d.done=2;toastTo(p,'서랍 안에 은색 열쇠가 있다')}else d.done=1}
   else if(m.t==='dkey'){const d=drawers[m.i];if(!d||d.done!==2)return;d.done=1;d.key=0;p.held++;toastTo(p,'열쇠를 주웠다')}
   else if(m.t==='door'){if(doorOpen)return;
     if(p.held>0&&opened<4){p.held--;setOpened(opened+1);bcastToast(opened>=4?'철컥… 문이 열렸다':'철컥… 자물쇠 '+opened+'/4')}else toastTo(p,'열쇠가 필요해요')}
@@ -427,9 +427,14 @@ function monStep(dt){
   else if(hid.length){const t=hid.reduce((a,b)=>dm(a)<dm(b)?a:b);goal=[lockers[t.h].cx,lockers[t.h].cz];if(same(mc,goal))mMode=2}
   else{sp=2.2;if(!roamCell||same(mc,roamCell))roamCell=rc();goal=roamCell}
   let tx,tz;
-  if(same(mc,goal)){if(tp){tx=tp.x;tz=tp.z}else{tx=(goal[0]+.5)*C;tz=(goal[1]+.5)*C}}
-  else{const nc=step(mc,goal),cx=(mc[0]+.5)*C,cz=(mc[1]+.5)*C;
-    if(Math.hypot(cx-mx,cz-mz)>.5){tx=cx;tz=cz}else{tx=(nc[0]+.5)*C;tz=(nc[1]+.5)*C}}
+  if(same(mc,goal)){mWay=null;if(tp){tx=tp.x;tz=tp.z}else{tx=(goal[0]+.5)*C;tz=(goal[1]+.5)*C}}
+  else{
+    // 칸 중심에서 다음 칸 중심으로 끝까지 이동(중간에 되돌아가지 않도록 경유점을 유지)
+    if(!mWay||Math.hypot(mWay[0]-mx,mWay[1]-mz)<.12){
+      const cx=(mc[0]+.5)*C,cz=(mc[1]+.5)*C;
+      if(Math.hypot(cx-mx,cz-mz)>.3)mWay=[cx,cz];
+      else{const nc=step(mc,goal);mWay=[(nc[0]+.5)*C,(nc[1]+.5)*C]}}
+    tx=mWay[0];tz=mWay[1]}
   const ddx=tx-mx,ddz=tz-mz,dd=Math.hypot(ddx,ddz)||1,v=Math.min(sp*dt,dd);mx=Math.max(.4,mx+ddx/dd*v);mz+=ddz/dd*v;
   if(tp&&Math.hypot(mx-tp.x,mz-tp.z)<1)kill(tp,'monster')}
 function hostTick(dt){
